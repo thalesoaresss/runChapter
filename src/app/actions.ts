@@ -86,6 +86,50 @@ export async function deleteChapterEntry(entryId: string) {
   return { error: null };
 }
 
+export async function updateProfile(formData: FormData) {
+  const displayName = (formData.get("display_name") as string)?.trim();
+  const teamId = (formData.get("team_id") as string)?.trim();
+  const email = (formData.get("email") as string)?.trim();
+
+  if (!displayName) {
+    return { error: "Informe seu nome." };
+  }
+  if (!email) {
+    return { error: "Informe seu e-mail." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "Sessão expirada, faça login novamente." };
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .update({ display_name: displayName, team_id: teamId || null })
+    .eq("id", user.id);
+
+  if (profileError) {
+    return { error: profileError.message };
+  }
+
+  let emailChanged = false;
+  if (email !== user.email) {
+    const { error: emailError } = await supabase.auth.updateUser({ email });
+    if (emailError) {
+      return { error: emailError.message };
+    }
+    emailChanged = true;
+  }
+
+  revalidatePath(`/user/${user.id}`);
+  revalidatePath("/");
+  return { error: null, emailChanged };
+}
+
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
