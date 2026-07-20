@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import ViewToggle from "@/components/ViewToggle";
-import AddEntryForm from "@/components/AddEntryForm";
+import ChapterPicker from "@/components/ChapterPicker";
 import { signOut } from "@/app/actions";
 
 export default async function Home() {
@@ -15,12 +15,23 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const [{ data: profiles }, { data: entries }, { data: teams }] =
-    await Promise.all([
-      supabase.from("profiles").select("id, display_name, team_id"),
-      supabase.from("chapter_entries").select("user_id"),
-      supabase.from("teams").select("id, name"),
-    ]);
+  const [
+    { data: profiles },
+    { data: entries },
+    { data: teams },
+    { data: chapters },
+    { data: myProfile },
+  ] = await Promise.all([
+    supabase.from("profiles").select("id, display_name, team_id"),
+    supabase.from("chapter_entries").select("user_id, chapter_id"),
+    supabase.from("teams").select("id, name"),
+    supabase
+      .from("chapters")
+      .select("id, title")
+      .eq("is_active", true)
+      .order("title"),
+    supabase.from("profiles").select("is_admin").eq("id", user.id).single(),
+  ]);
 
   const teamNameById = new Map((teams ?? []).map((t) => [t.id, t.name]));
 
@@ -37,6 +48,9 @@ export default async function Home() {
   }));
 
   const me = racers.find((r) => r.id === user.id);
+  const mySeenChapterIds = (entries ?? [])
+    .filter((e) => e.user_id === user.id)
+    .map((e) => e.chapter_id);
 
   return (
     <main className="min-h-screen px-4 py-8 sm:py-12">
@@ -44,7 +58,7 @@ export default async function Home() {
         <header className="flex items-start justify-between mb-8">
           <div>
             <p className="font-display uppercase tracking-[0.3em] text-xs text-accent mb-2">
-              Ranking geral - LEVTY
+              Ranking geral
             </p>
             <h1 className="font-display text-4xl font-semibold tracking-tight">
               run<span className="text-accent">Chapter</span>
@@ -60,6 +74,14 @@ export default async function Home() {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {myProfile?.is_admin && (
+              <a
+                href="/admin"
+                className="text-xs text-accent hover:brightness-125 border border-lane-line rounded-md px-3 py-1.5 transition-colors"
+              >
+                Admin
+              </a>
+            )}
             <a
               href={`/user/${user.id}`}
               className="text-xs text-muted hover:text-foreground border border-lane-line rounded-md px-3 py-1.5 transition-colors"
@@ -75,7 +97,10 @@ export default async function Home() {
         </header>
 
         <div className="mb-6">
-          <AddEntryForm />
+          <ChapterPicker
+            availableChapters={chapters ?? []}
+            seenChapterIds={mySeenChapterIds}
+          />
         </div>
 
         <ViewToggle racers={racers} />

@@ -4,12 +4,26 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-export async function addChapterEntry(formData: FormData) {
-  const chapterTitle = (formData.get("chapter_title") as string)?.trim();
-  if (!chapterTitle) {
-    return { error: "Informe o título do capítulo." };
+async function requireAdmin() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { supabase, user: null, isAdmin: false as const };
   }
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("is_admin")
+    .eq("id", user.id)
+    .single();
+
+  return { supabase, user, isAdmin: Boolean(profile?.is_admin) };
+}
+
+export async function markChapterSeen(chapterId: string) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,47 +35,21 @@ export async function addChapterEntry(formData: FormData) {
 
   const { error } = await supabase
     .from("chapter_entries")
-    .insert({ user_id: user.id, chapter_title: chapterTitle });
+    .insert({ user_id: user.id, chapter_id: chapterId });
 
   if (error) {
+    if (error.code === "23505") {
+      return { error: "Você já marcou esse capítulo como visto." };
+    }
     return { error: error.message };
   }
 
   revalidatePath("/");
-  return { error: null };
-}
-
-export async function updateChapterEntry(entryId: string, formData: FormData) {
-  const chapterTitle = (formData.get("chapter_title") as string)?.trim();
-  if (!chapterTitle) {
-    return { error: "Informe o título do capítulo." };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { error: "Sessão expirada, faça login novamente." };
-  }
-
-  const { error } = await supabase
-    .from("chapter_entries")
-    .update({ chapter_title: chapterTitle })
-    .eq("id", entryId)
-    .eq("user_id", user.id);
-
-  if (error) {
-    return { error: error.message };
-  }
-
   revalidatePath(`/user/${user.id}`);
-  revalidatePath("/");
   return { error: null };
 }
 
-export async function deleteChapterEntry(entryId: string) {
+export async function unmarkChapterSeen(entryId: string) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -81,8 +69,8 @@ export async function deleteChapterEntry(entryId: string) {
     return { error: error.message };
   }
 
-  revalidatePath(`/user/${user.id}`);
   revalidatePath("/");
+  revalidatePath(`/user/${user.id}`);
   return { error: null };
 }
 
@@ -128,6 +116,69 @@ export async function updateProfile(formData: FormData) {
   revalidatePath(`/user/${user.id}`);
   revalidatePath("/");
   return { error: null, emailChanged };
+}
+
+// --- Admin: gestão de capítulos ---
+
+export async function createChapter(formData: FormData) {
+  const title = (formData.get("title") as string)?.trim();
+  if (!title) {
+    return { error: "Informe o título do capítulo." };
+  }
+
+  const { supabase, isAdmin } = await requireAdmin();
+  if (!isAdmin) {
+    return { error: "Só administradores podem cadastrar capítulos." };
+  }
+
+  const { error } = await supabase.from("chapters").insert({ title });
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return { error: null };
+}
+
+export async function toggleChapterActive(chapterId: string, isActive: boolean) {
+  const { supabase, isAdmin } = await requireAdmin();
+  if (!isAdmin) {
+    return { error: "Só administradores podem alterar capítulos." };
+  }
+
+  const { error } = await supabase
+    .from("chapters")
+    .update({ is_active: isActive })
+    .eq("id", chapterId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return { error: null };
+}
+
+export async function deleteChapter(chapterId: string) {
+  const { supabase, isAdmin } = await requireAdmin();
+  if (!isAdmin) {
+    return { error: "Só administradores podem remover capítulos." };
+  }
+
+  const { error } = await supabase
+    .from("chapters")
+    .delete()
+    .eq("id", chapterId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/");
+  return { error: null };
 }
 
 export async function signOut() {

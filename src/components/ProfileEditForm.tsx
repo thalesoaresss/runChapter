@@ -46,7 +46,7 @@ export default function ProfileEditForm({
           onClick={() => setOpen(true)}
           className="text-xs text-muted hover:text-accent transition-colors border border-lane-line rounded-md px-3 py-1.5"
         >
-          Editar dados
+          Editar dados pessoais
         </button>
         {success && (
           <p className="text-xs text-track-teal max-w-xs">{success}</p>

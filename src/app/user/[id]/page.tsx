@@ -29,7 +29,7 @@ export default async function UserProfilePage({
         .maybeSingle(),
       supabase
         .from("chapter_entries")
-        .select("id, chapter_title, viewed_at")
+        .select("id, viewed_at, chapters ( title )")
         .eq("user_id", id)
         .order("viewed_at", { ascending: false }),
       supabase.from("teams").select("id, name").order("name"),
@@ -45,7 +45,9 @@ export default async function UserProfilePage({
 
   const mappedEntries = (entries ?? []).map((e) => ({
     id: e.id,
-    chapterTitle: e.chapter_title,
+    chapterTitle:
+      (e as unknown as { chapters: { title: string } | null }).chapters
+        ?.title ?? "(capítulo removido)",
     viewedAt: e.viewed_at,
   }));
 
